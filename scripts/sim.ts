@@ -4,6 +4,7 @@
 // 模拟的"玩家"：
 //  - 每掉一件装备：换上后战力更高就换上（被换下的立刻分解），否则直接分解。所以背包永远是空的，不会漏掉任何一次掉落。
 //  - 每 5 秒看一次：金币够就强化"当前强化等级最低"的部位（并列取排在前面的）。
+//  - 不会点「挑战首领」：阵亡后进入刷怪，只靠战力涨够了的自动挑战去打首领。
 import { readFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 import { step } from '../src/logic/battle.ts'
@@ -30,6 +31,8 @@ const rng = createRng(seed)
 
 let stage11At: number | null = null // 首次进入第 11 关（= 打过第 10 关）的时刻，毫秒
 let bigUpgrades = 0 // 打过第 10 关之前，战力涨幅 ≥ sim.bigUpgradePct 的换装次数
+let farmSteps = 0 // 处在刷怪状态的步数
+let autoChallenges = 0 // 收到 bossChallenge 事件的次数
 
 const min1 = (ms: number): string => (ms / 60000).toFixed(1)
 
@@ -60,18 +63,20 @@ const totalSteps = Math.round((minutes * 60000) / STEP_MS)
 for (let i = 1; i <= totalSteps; i++) {
   const t = i * STEP_MS
   for (const e of step(state, balance, rng, STEP_MS)) {
+    if (e.type === 'bossChallenge') autoChallenges++
     if (e.type !== 'loot') continue
     for (const drop of e.drops) if (!drop.salvaged) consider(drop.item, t)
   }
+  if (state.stage.farming) farmSteps++
   if (t % CHECK_MS === 0) autoEnhance()
   if (stage11At === null && state.stage.n >= 11) stage11At = t
   if (t % 60000 === 0) {
     console.log(
-      `min=${t / 60000} stage=${state.stage.n} wave=${state.stage.wave} level=${state.hero.level} gold=${Math.floor(state.gold)} power=${powerOf(state, balance)}`,
+      `min=${t / 60000} stage=${state.stage.n} wave=${state.stage.wave} level=${state.hero.level} gold=${Math.floor(state.gold)} power=${powerOf(state, balance)} farming=${state.stage.farming ? 1 : 0}`,
     )
   }
 }
 
 console.log(
-  `stage10_at_min=${stage11At === null ? 'never' : min1(stage11At)} big_upgrades_before_stage10=${bigUpgrades} deaths=${state.deaths}`,
+  `stage10_at_min=${stage11At === null ? 'never' : min1(stage11At)} big_upgrades_before_stage10=${bigUpgrades} deaths=${state.deaths} farm_min=${min1(farmSteps * STEP_MS)} auto_challenges=${autoChallenges}`,
 )

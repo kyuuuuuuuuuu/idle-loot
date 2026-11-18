@@ -1,5 +1,5 @@
-import Phaser from 'phaser'
-import { FONT } from './Hud.ts'
+import type Phaser from 'phaser'
+import { addText } from './ui.ts'
 
 interface Entry {
   text: Phaser.GameObjects.Text
@@ -19,8 +19,7 @@ export class FloatingTextPool {
 
   constructor(scene: Phaser.Scene, size = 48) {
     for (let i = 0; i < size; i++) {
-      const text = scene.add
-        .text(0, 0, '', { fontFamily: FONT, fontSize: '28px', color: '#ffffff', stroke: '#000000', strokeThickness: 4 })
+      const text = addText(scene, 0, 0, 28, '#ffffff', { stroke: '#000000', strokeThickness: 4 })
         .setOrigin(0.5)
         .setDepth(100)
         .setVisible(false)

@@ -27,7 +27,8 @@
     "hpMult": 10, "hpMult_说明": "首领生命是同关小怪的几倍",
     "atkMult": 3, "atkMult_说明": "首领攻击是同关小怪的几倍",
     "rewardMult": 8, "rewardMult_说明": "首领给的金币、经验是同关小怪的几倍",
-    "drops": 2, "drops_说明": "首领必掉几件装备"
+    "drops": 2, "drops_说明": "首领必掉几件装备",
+    "autoChallengePct": 0.2, "autoChallengePct_说明": "打输首领后在本关刷小怪；战力比阵亡时涨了这么多，就自动再去挑战首领。0.2 = 20%；设成 99 等于只能手动点「挑战首领」"
   },
 
   "stage": {

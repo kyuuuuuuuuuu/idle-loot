@@ -88,3 +88,32 @@ export function applyOffline(
   }
   return { salvaged, salvageGold }
 }
+
+export interface OfflineSummary {
+  /** 实际计入的秒数（封顶后） */
+  seconds: number
+  /** 离线金币 + 背包满分解得的金币 */
+  gold: number
+  exp: number
+  /** 装备总件数（含被分解的） */
+  items: number
+  /** 其中背包满被分解的件数 */
+  salvaged: number
+}
+
+/**
+ * 算出离线收益并直接加进 state，返回给弹窗用的汇总。不到 minSeconds 就什么都不改，返回 null。
+ * 打开游戏和切回前台都调它；调用方负责随后立刻存档（存档会盖新的 lastSavedAt），同一段时间才不会发两次。
+ */
+export function grantOffline(state: GameState, balance: Balance, rng: Rng, nowMs: number): OfflineSummary | null {
+  const result = computeOffline(state, balance, rng, nowMs)
+  if (result.seconds <= 0) return null
+  const { salvaged, salvageGold } = applyOffline(state, balance, result)
+  return {
+    seconds: result.seconds,
+    gold: result.gold + salvageGold,
+    exp: result.exp,
+    items: result.items.length,
+    salvaged,
+  }
+}

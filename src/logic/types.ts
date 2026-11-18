@@ -61,6 +61,10 @@ export interface StageState {
   /** walk：行走中（清完一波、过关、阵亡、刚读档）；fight：刷怪和战斗 */
   phase: 'walk' | 'fight'
   walkMs: number
+  /** 在刷怪：打不过首领，留在本关循环小怪波，直到挑战首领 */
+  farming: boolean
+  /** 进入刷怪时（阵亡那一刻）的战力；不刷怪时是 0 */
+  failPower: number
 }
 
 export interface RateBucket {
@@ -118,6 +122,8 @@ export type BattleEvent =
   | { type: 'waveStart'; stage: number; wave: number; isBoss: boolean }
   | { type: 'stageClear'; stage: number }
   | { type: 'heroDeath'; stage: number }
+  // 只在"战力涨够了自动去挑战首领"时发；玩家手点「挑战首领」不发
+  | { type: 'bossChallenge' }
 
 export function isSkillOrder(order: readonly unknown[]): order is SkillId[] {
   return (
@@ -131,7 +137,7 @@ export function emptyCooldowns(): Record<SkillId, number> {
 }
 
 export function freshStage(n: number): StageState {
-  return { n, wave: 1, spawned: 0, spawnTimerMs: 0, phase: 'walk', walkMs: 0 }
+  return { n, wave: 1, spawned: 0, spawnTimerMs: 0, phase: 'walk', walkMs: 0, farming: false, failPower: 0 }
 }
 
 export function emptyRate(): RateWindow {

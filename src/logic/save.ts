@@ -2,9 +2,10 @@ import { AFFIX_IDS, emptyCooldowns, freshStage, isSkillOrder, SLOTS } from './ty
 import type { Affix, AffixId, GameState, Item, Rarity, RateBucket, RateWindow, Slot } from './types.ts'
 
 export const SAVE_KEY = 'idle-loot-save'
-export const SAVE_VERSION = 1
+export const SAVE_VERSION = 2
 
 // 存档 = state 的持久部分 JSON 化。场上怪物、冷却、波次进度不存：读档时从当前关卡第 1 波重新开始。
+// 版本历史：1 = 第一版；2 = 加了刷怪状态 farming / failPower。改格式就加一版、在 deserialize 里写一段迁移。
 
 export function serialize(state: GameState): string {
   return JSON.stringify({
@@ -17,6 +18,8 @@ export function serialize(state: GameState): string {
     enhance: state.enhance,
     skillOrder: state.skills.order,
     stage: state.stage.n,
+    farming: state.stage.farming,
+    failPower: state.stage.failPower,
     totalKills: state.totalKills,
     deaths: state.deaths,
     rate: state.rate,
@@ -24,7 +27,7 @@ export function serialize(state: GameState): string {
   })
 }
 
-/** 解析失败、版本不对、缺字段、字段类型不对，一律返回 null（调用方开新档） */
+/** 解析失败、不认识的版本、缺字段、字段类型不对，一律返回 null（调用方开新档） */
 export function deserialize(text: string): GameState | null {
   let d: unknown
   try {
@@ -32,8 +35,17 @@ export function deserialize(text: string): GameState | null {
   } catch {
     return null
   }
-  if (!isObj(d) || d.version !== SAVE_VERSION) return null
+  if (!isObj(d) || (d.version !== 1 && d.version !== SAVE_VERSION)) return null
   const { hero, gold, bag, nextItemId, equipped, enhance, skillOrder, stage, totalKills, deaths, rate, lastSavedAt } = d
+
+  // 迁移：第 1 版没有刷怪字段，当作"不在刷怪"读进来；下次存档时 serialize 自然写成第 2 版
+  let farming = false
+  let failPower = 0
+  if (d.version === SAVE_VERSION) {
+    if (typeof d.farming !== 'boolean' || !isNum(d.failPower, 0)) return null
+    farming = d.farming
+    failPower = d.failPower
+  }
 
   if (!isObj(hero) || !isInt(hero.level, 1) || !isNum(hero.exp, 0) || !isNum(hero.hp, 0)) return null
   if (!isNum(gold, 0) || !isInt(nextItemId, 1) || !isInt(stage, 1)) return null
@@ -54,7 +66,7 @@ export function deserialize(text: string): GameState | null {
     equipped: eq,
     enhance: enh,
     skills: { order: [...skillOrder], cd: emptyCooldowns(), gcd: 0 },
-    stage: freshStage(stage),
+    stage: { ...freshStage(stage), farming, failPower },
     monsters: [],
     nextMonsterId: 1,
     totalKills,

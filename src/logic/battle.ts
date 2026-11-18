@@ -2,7 +2,7 @@ import { rollItem, rollRarity } from './loot.ts'
 import { gainExp, receiveItem } from './progress.ts'
 import type { Rng } from './rng.ts'
 import { isBossWave, killReward, monsterAtk, monsterHp, waveSize } from './stage.ts'
-import { heroStats } from './stats.ts'
+import { heroStats, power } from './stats.ts'
 import type { HeroStats } from './stats.ts'
 import { SKILL_IDS } from './types.ts'
 import type { Balance, BattleEvent, Drop, GameState, Monster } from './types.ts'
@@ -104,7 +104,7 @@ function monstersAct(state: GameState, balance: Balance, dtMs: number, events: B
   }
 }
 
-/** 英雄死了：本关从第 1 波重来，回满血，走一段路再开波 */
+/** 英雄死了：回满血，进入刷怪——记下阵亡时的战力，本关从第 1 波重来，走一段路再开波 */
 function heroDies(state: GameState, balance: Balance, stats: HeroStats, events: BattleEvent[]): void {
   events.push({ type: 'heroDeath', stage: state.stage.n })
   state.deaths++
@@ -117,6 +117,31 @@ function heroDies(state: GameState, balance: Balance, stats: HeroStats, events: 
   st.spawnTimerMs = 0
   st.phase = 'walk'
   st.walkMs = balance.stage.walkMs
+  // 挑战首领时又死了、或刷怪时死在小怪手里，都按这一次的战力重新记
+  st.farming = true
+  st.failPower = power(stats)
+}
+
+/** 自动挑战的战力门槛 = 阵亡时战力 × (1 + autoChallengePct)，向上取整。战力是整数，所以"战力 ≥ 门槛"和"战力 ≥ 未取整的值"等价；界面上显示的也是它 */
+export function autoChallengeTarget(state: GameState, balance: Balance): number {
+  return Math.ceil(state.stage.failPower * (1 + balance.boss.autoChallengePct))
+}
+
+/** 挑战首领：清场、回满血、走一段路后开首领波，退出刷怪。玩家点按钮和自动挑战共用它；不在刷怪时什么都不改，返回 false */
+export function challengeBoss(state: GameState, balance: Balance): boolean {
+  const st = state.stage
+  if (!st.farming) return false
+  st.farming = false
+  st.failPower = 0
+  state.monsters = []
+  state.hero.hp = heroStats(state, balance).maxHp
+  state.hero.atkTimerMs = 0
+  st.wave = balance.stage.wavesPerStage + 1
+  st.spawned = 0
+  st.spawnTimerMs = 0
+  st.phase = 'walk'
+  st.walkMs = balance.stage.walkMs
+  return true
 }
 
 /** 射程内最前面（x 最小）的活怪；x 相同取先刷出的 */
@@ -218,7 +243,11 @@ function resolveKills(state: GameState, balance: Balance, rng: Rng, events: Batt
   }
 }
 
-/** 本波刷完、场上没怪了 = 清波：普通波回一部分血进下一波；首领波过关，关卡 +1、回满血 */
+/**
+ * 本波刷完、场上没怪了 = 清波。
+ * 首领波：过关，关卡 +1、回满血、退出刷怪。
+ * 小怪波：刷怪中先看战力够不够自动挑战首领；否则回一部分血进下一波，刷怪时数到首领波就绕回第 1 波。
+ */
 function checkWaveClear(state: GameState, balance: Balance, events: BattleEvent[]): void {
   const st = state.stage
   if (st.phase !== 'fight' || st.spawned < waveSize(balance, st.n, st.wave) || state.monsters.length > 0) return
@@ -229,9 +258,17 @@ function checkWaveClear(state: GameState, balance: Balance, events: BattleEvent[
     events.push({ type: 'stageClear', stage: st.n })
     st.n++
     st.wave = 1
+    st.farming = false
+    st.failPower = 0
     healHero(state, stats, stats.maxHp, events)
+  } else if (st.farming && power(stats) >= autoChallengeTarget(state, balance)) {
+    // challengeBoss 已经回满血、清场、进入行走，不再走下面的回血
+    challengeBoss(state, balance)
+    events.push({ type: 'bossChallenge' })
+    return
   } else {
     st.wave++
+    if (st.farming && isBossWave(balance, st.wave)) st.wave = 1
     healHero(state, stats, stats.maxHp * balance.stage.waveHealPct, events)
   }
   st.phase = 'walk'

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { step } from '../src/logic/battle.ts'
+import { challengeBoss, step } from '../src/logic/battle.ts'
 import { salvageValue } from '../src/logic/loot.ts'
 import { createRng } from '../src/logic/rng.ts'
 import { killReward } from '../src/logic/stage.ts'
-import { heroStats } from '../src/logic/stats.ts'
+import { heroStats, powerOf } from '../src/logic/stats.ts'
 import { createState } from '../src/logic/types.ts'
 import type { Balance, BattleEvent, GameState, Monster } from '../src/logic/types.ts'
 
@@ -35,6 +35,21 @@ const fight = (b: Balance): GameState => {
 
 const of = <T extends BattleEvent['type']>(events: BattleEvent[], type: T) =>
   events.filter((e): e is Extract<BattleEvent, { type: T }> => e.type === type)
+
+/** 正在刷怪的 fight 状态：failPower 是"阵亡时战力" */
+const farmingState = (b: Balance, failPower: number): GameState => {
+  const s = fight(b)
+  s.stage.farming = true
+  s.stage.failPower = failPower
+  return s
+}
+
+/** 放一只一击就死的怪、让英雄这一步出手：这一步打死它，本波清完 */
+const clearWave = (s: GameState, b: Balance): BattleEvent[] => {
+  s.hero.atkTimerMs = 1000
+  s.monsters.push(dummy({ hp: 1 }))
+  return step(s, b, createRng(1), 50)
+}
 
 test('battle (a): 顺序 [heal, heavy, whirl]、满血、射程内有怪时，放出来的是 heavy', () => {
   const b = tweak()
@@ -80,13 +95,14 @@ test('battle (c): 暴击率为 1 时，普攻伤害 = 攻击 × critDmg；暴击
   }
 })
 
-test('battle (d): 英雄死后回到本关第 1 波，并且满血', () => {
+test('battle (d): 英雄死后进入刷怪：回本关第 1 波、满血、记下战力', () => {
   const b = tweak()
   const s = fight(b)
   s.stage.n = 3
   s.stage.wave = 3
   s.hero.hp = 1
   s.monsters.push(dummy({ atk: 9999, atkTimerMs: 1000 / b.monster.atkSpeed })) // 这一步就出手
+  const powerAtStart = powerOf(s, b) // 阵亡那一步开头的战力
   const events = step(s, b, createRng(1), 50)
   assert.equal(of(events, 'heroDeath').length, 1)
   assert.equal(s.stage.n, 3)
@@ -94,6 +110,8 @@ test('battle (d): 英雄死后回到本关第 1 波，并且满血', () => {
   assert.equal(s.hero.hp, heroStats(s, b).maxHp)
   assert.equal(s.monsters.length, 0)
   assert.equal(s.deaths, 1)
+  assert.equal(s.stage.farming, true)
+  assert.equal(s.stage.failPower, powerAtStart)
 })
 
 test('battle (e): 打死首领后关卡 +1，并且满血', () => {
@@ -110,6 +128,114 @@ test('battle (e): 打死首领后关卡 +1，并且满血', () => {
   assert.equal(s.stage.wave, 1)
   assert.equal(s.stage.phase, 'walk')
   assert.equal(s.hero.hp, heroStats(s, b).maxHp) // 首领经验多，这一步多半还升了级；满血按升级后的上限算
+})
+
+test('battle: 刷怪中清完第 wavesPerStage 波，绕回第 1 波而不进首领波；不刷怪时同一处会进首领波', () => {
+  const b = tweak()
+  const farm = farmingState(b, 1e12) // 门槛高到不可能触发自动挑战
+  farm.stage.wave = b.stage.wavesPerStage
+  const events = clearWave(farm, b)
+  assert.equal(farm.stage.wave, 1)
+  assert.equal(farm.stage.farming, true)
+  assert.equal(farm.stage.phase, 'walk')
+  assert.equal(of(events, 'bossChallenge').length, 0)
+
+  const normal = fight(b)
+  normal.stage.wave = b.stage.wavesPerStage
+  clearWave(normal, b)
+  assert.equal(normal.stage.wave, b.stage.wavesPerStage + 1)
+})
+
+test('battle: 刷怪中清完一波、战力达到门槛，自动挑战首领：发 bossChallenge、满血、走路后开首领波', () => {
+  const b = tweak()
+  const s = farmingState(b, 50) // 战力 110 ≥ 50 × 1.2
+  s.hero.hp = 50
+  const events = clearWave(s, b)
+  assert.deepEqual(of(events, 'bossChallenge'), [{ type: 'bossChallenge' }])
+  assert.equal(s.stage.wave, b.stage.wavesPerStage + 1)
+  assert.equal(s.stage.farming, false)
+  assert.equal(s.stage.failPower, 0)
+  assert.equal(s.hero.hp, heroStats(s, b).maxHp) // 满血，不是只回 waveHealPct
+  assert.equal(s.stage.phase, 'walk')
+  assert.equal(s.stage.walkMs, b.stage.walkMs)
+  assert.equal(s.monsters.length, 0)
+})
+
+test('battle: 战力恰好等于门槛也算够（≥），差 1 点就不够', () => {
+  const b = tweak((x) => { x.boss.autoChallengePct = 0 }) // 门槛 = failPower 本身，不受 1.2 倍取整的干扰
+  const p = powerOf(createState(b, 0), b)
+  assert.equal(of(clearWave(farmingState(b, p), b), 'bossChallenge').length, 1)
+  assert.equal(of(clearWave(farmingState(b, p + 1), b), 'bossChallenge').length, 0)
+})
+
+test('battle: 刷怪中清完一波、战力没到门槛，不挑战：继续刷怪，波次 +1，只回 waveHealPct 的血', () => {
+  const b = tweak()
+  const p = powerOf(createState(b, 0), b)
+  const s = farmingState(b, p) // 要涨到 1.2 × p 才够，现在一点没涨
+  s.hero.hp = 50
+  const events = clearWave(s, b)
+  assert.equal(of(events, 'bossChallenge').length, 0)
+  assert.equal(s.stage.farming, true)
+  assert.equal(s.stage.failPower, p)
+  assert.equal(s.stage.wave, 2)
+  assert.equal(s.stage.phase, 'walk')
+  assert.ok(Math.abs(s.hero.hp - (50 + b.stage.waveHealPct * heroStats(s, b).maxHp)) < 1e-9)
+})
+
+test('battle: challengeBoss 不在刷怪时返回 false、state 不变；刷怪时清场、满血、进入首领波的行走', () => {
+  const b = tweak()
+  const idle = fight(b)
+  idle.monsters.push(dummy())
+  idle.hero.hp = 50
+  const before = JSON.stringify(idle)
+  assert.equal(challengeBoss(idle, b), false)
+  assert.equal(JSON.stringify(idle), before)
+
+  const s = farmingState(b, 500)
+  s.monsters.push(dummy())
+  s.hero.hp = 50
+  s.hero.atkTimerMs = 700
+  s.stage.spawnTimerMs = 300
+  assert.equal(challengeBoss(s, b), true)
+  assert.equal(s.stage.farming, false)
+  assert.equal(s.stage.failPower, 0)
+  assert.equal(s.monsters.length, 0)
+  assert.equal(s.hero.hp, heroStats(s, b).maxHp)
+  assert.equal(s.hero.atkTimerMs, 0)
+  assert.equal(s.stage.wave, b.stage.wavesPerStage + 1)
+  assert.equal(s.stage.spawned, 0)
+  assert.equal(s.stage.spawnTimerMs, 0)
+  assert.equal(s.stage.phase, 'walk')
+  assert.equal(s.stage.walkMs, b.stage.walkMs)
+  assert.equal(challengeBoss(s, b), false) // 已经退出刷怪，再点没效果
+})
+
+test('battle: 打死首领后退出刷怪，failPower 清零', () => {
+  const b = tweak()
+  const s = farmingState(b, 500)
+  s.stage.wave = b.stage.wavesPerStage + 1
+  s.hero.atkTimerMs = 1000
+  s.monsters.push(dummy({ hp: 1, isBoss: true }))
+  const events = step(s, b, createRng(1), 50)
+  assert.equal(of(events, 'stageClear').length, 1)
+  assert.equal(s.stage.farming, false)
+  assert.equal(s.stage.failPower, 0)
+})
+
+test('battle: 挑战首领时又死了，继续刷怪，failPower 按这一次的战力重新记', () => {
+  const b = tweak()
+  const s = farmingState(b, 500)
+  assert.equal(challengeBoss(s, b), true)
+  s.stage.phase = 'fight'
+  s.stage.spawned = 99
+  s.equipped.weapon = { id: 1, slot: 'weapon', rarity: 0, level: 1, main: 20, affixes: [] } // 战力和 500 都不同
+  s.hero.hp = 1
+  s.monsters.push(dummy({ atk: 9999, atkTimerMs: 1000 / b.monster.atkSpeed, isBoss: true }))
+  const powerAtStart = powerOf(s, b)
+  assert.equal(of(step(s, b, createRng(1), 50), 'heroDeath').length, 1)
+  assert.equal(s.stage.farming, true)
+  assert.equal(s.stage.failPower, powerAtStart)
+  assert.equal(s.stage.wave, 1)
 })
 
 test('battle: 嗜血只在已损失生命 ≥ 回复量一半时才放', () => {

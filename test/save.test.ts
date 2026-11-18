@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import { rollItem } from '../src/logic/loot.ts'
 import { createRng } from '../src/logic/rng.ts'
 import { deserialize, SAVE_VERSION, serialize } from '../src/logic/save.ts'
-import { createState } from '../src/logic/types.ts'
+import { createState, freshStage } from '../src/logic/types.ts'
 import type { Balance, GameState } from '../src/logic/types.ts'
 
 const balance: Balance = JSON.parse(readFileSync(new URL('../src/data/balance.json', import.meta.url), 'utf8'))
@@ -37,7 +37,7 @@ test('save: 序列化后再反序列化，结果相等', () => {
 
 test('save: 场上怪物、冷却、波次进度不存，读档从当前关卡第 1 波重新开始', () => {
   const s = played()
-  s.stage = { n: 7, wave: 3, spawned: 2, spawnTimerMs: 300, phase: 'fight', walkMs: 0 }
+  s.stage = { n: 7, wave: 3, spawned: 2, spawnTimerMs: 300, phase: 'fight', walkMs: 0, farming: false, failPower: 0 }
   s.monsters.push({ id: 9, hp: 5, maxHp: 10, atk: 1, x: 300, isBoss: false, atkTimerMs: 0 })
   s.skills.cd = { heavy: 1000, whirl: 2000, heal: 3000 }
   s.skills.gcd = 500
@@ -62,8 +62,8 @@ test('save: 乱码、空串、不是对象的 JSON 都返回 null', () => {
 test('save: version 不对（或没有）返回 null', () => {
   const data = JSON.parse(serialize(played()))
   assert.equal(data.version, SAVE_VERSION)
-  assert.equal(deserialize(JSON.stringify({ ...data, version: 2 })), null)
-  assert.equal(deserialize(JSON.stringify({ ...data, version: '1' })), null)
+  assert.equal(deserialize(JSON.stringify({ ...data, version: 3 })), null)
+  assert.equal(deserialize(JSON.stringify({ ...data, version: '2' })), null)
   const { version: _drop, ...noVersion } = data
   assert.equal(deserialize(JSON.stringify(noVersion)), null)
 })
@@ -90,4 +90,42 @@ test('save: 缺字段、字段类型不对、装备数据坏了，都返回 null
     '关卡号为小数': broken((d) => (d.stage = 2.5)),
   }
   for (const [name, text] of Object.entries(cases)) assert.equal(deserialize(text), null, name)
+})
+
+test('save: version 2 往返后，刷怪状态 farming / failPower 原样还在', () => {
+  const s = played()
+  s.stage.farming = true
+  s.stage.failPower = 4321
+  const data = JSON.parse(serialize(s))
+  assert.equal(data.version, 2)
+  assert.equal(data.farming, true)
+  assert.equal(data.failPower, 4321)
+  const loaded = deserialize(serialize(s))
+  assert.ok(loaded)
+  assert.deepEqual(loaded.stage, { ...freshStage(7), farming: true, failPower: 4321 })
+})
+
+test('save: version 1 的旧存档（没有刷怪字段）能读，当作不在刷怪；再存就是 version 2', () => {
+  const v1 = JSON.parse(serialize(played()))
+  v1.version = 1
+  delete v1.farming
+  delete v1.failPower
+  const loaded = deserialize(JSON.stringify(v1))
+  assert.ok(loaded)
+  assert.equal(loaded.stage.n, 7)
+  assert.equal(loaded.stage.farming, false)
+  assert.equal(loaded.stage.failPower, 0)
+  assert.equal(loaded.gold, 4321) // 其余字段照旧
+  assert.equal(JSON.parse(serialize(loaded)).version, 2)
+  // version 1 不看这两个字段：就算带着坏值也当没有
+  const odd = deserialize(JSON.stringify({ ...v1, farming: 'oops', failPower: -5 }))
+  assert.equal(odd?.stage.farming, false)
+  assert.equal(odd?.stage.failPower, 0)
+})
+
+test('save: version 2 但 farming 不是 boolean、failPower 不是 ≥ 0 的有限数（或缺了），返回 null', () => {
+  const data = JSON.parse(serialize(played()))
+  const bad = (patch: Record<string, unknown>): string => JSON.stringify({ ...data, ...patch })
+  for (const farming of ['true', 1, null, undefined]) assert.equal(deserialize(bad({ farming })), null, `farming ${String(farming)}`)
+  for (const failPower of ['5', -1, null, undefined]) assert.equal(deserialize(bad({ failPower })), null, `failPower ${String(failPower)}`)
 })

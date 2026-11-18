@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { salvageValue } from '../src/logic/loot.ts'
-import { applyOffline, computeOffline } from '../src/logic/offline.ts'
+import { applyOffline, computeOffline, grantOffline } from '../src/logic/offline.ts'
 import { createRng } from '../src/logic/rng.ts'
 import { createState } from '../src/logic/types.ts'
 import type { Balance, GameState, Item } from '../src/logic/types.ts'
@@ -83,4 +83,31 @@ test('offline: applyOffline 加金币、经验、装备；超出背包容量的�
   assert.equal(s.gold, r.gold + salvageGold)
   assert.equal(s.nextItemId, 107)
   assert.ok(s.hero.level > 1 || s.hero.exp > 0) // 经验进了账（250 经验够升好几级）
+})
+
+test('offline: grantOffline 离开不到 minSeconds 返回 null，state 一点没动', () => {
+  const s = withRate()
+  const before = JSON.stringify(s)
+  assert.equal(grantOffline(s, balance, createRng(1), 59_000), null)
+  assert.equal(JSON.stringify(s), before)
+})
+
+test('offline: grantOffline 背包满时，汇总的 gold 含分解所得，salvaged 和 items 的件数对，state 已经加好', () => {
+  const s = withRate()
+  const filler = (id: number): Item => ({ id, slot: 'ring', rarity: 0, level: 1, main: 1, affixes: [] })
+  for (let i = 1; i <= 38; i++) s.bag.push(filler(i)) // 容量 40，只剩 2 个空位
+  s.nextItemId = 100
+  const expected = computeOffline(structuredClone(s), balance, createRng(1), 10 * MIN) // 同种子：和 grantOffline 里算的一样
+  const salvageGold = expected.items.slice(2).reduce((sum, it) => sum + salvageValue(balance, it), 0)
+
+  const summary = grantOffline(s, balance, createRng(1), 10 * MIN)
+  assert.deepEqual(summary, {
+    seconds: 600,
+    gold: expected.gold + salvageGold,
+    exp: expected.exp,
+    items: 7,
+    salvaged: 5,
+  })
+  assert.equal(s.gold, summary.gold) // 加进 state 的就是汇总里写的
+  assert.equal(s.bag.length, 40)
 })
