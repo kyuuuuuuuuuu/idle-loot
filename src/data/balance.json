@@ -1,0 +1,111 @@
+{
+  "_说明": "数值表：所有手感相关的数字都在这里。每个数字旁边的 *_说明 是给人看的，程序不读。改完推送，一两分钟后刷新网页就生效；本地可以先跑 npm run sim 看推关节奏。",
+
+  "hero": {
+    "atkBase": 10, "atkBase_说明": "1 级时的攻击",
+    "atkPerLevel": 2, "atkPerLevel_说明": "每升一级加多少攻击",
+    "hpBase": 120, "hpBase_说明": "1 级时的最大生命",
+    "hpPerLevel": 16, "hpPerLevel_说明": "每升一级加多少最大生命",
+    "critRate": 0.05, "critRate_说明": "基础暴击率，0.05 = 5%",
+    "critDmg": 1.5, "critDmg_说明": "暴击时伤害乘以几",
+    "atkSpeed": 1.0, "atkSpeed_说明": "每秒普攻几次",
+    "range": 110, "range_说明": "普攻射程，像素",
+    "x": 180, "x_说明": "英雄站在屏幕上的横坐标，像素"
+  },
+
+  "monster": {
+    "hpBase": 32, "hpBase_说明": "第 1 关小怪的生命",
+    "hpGrowth": 1.3, "hpGrowth_说明": "每过一关，小怪生命乘以几",
+    "atkBase": 4, "atkBase_说明": "第 1 关小怪每下打多少",
+    "atkGrowth": 1.22, "atkGrowth_说明": "每过一关，小怪攻击乘以几",
+    "atkSpeed": 0.8, "atkSpeed_说明": "小怪每秒攻击几次",
+    "moveSpeed": 110, "moveSpeed_说明": "小怪每秒走多少像素",
+    "spawnX": 760, "spawnX_说明": "小怪出现的横坐标，像素（屏幕宽 720，所以从右边外面走进来）"
+  },
+
+  "boss": {
+    "hpMult": 10, "hpMult_说明": "首领生命是同关小怪的几倍",
+    "atkMult": 3, "atkMult_说明": "首领攻击是同关小怪的几倍",
+    "rewardMult": 8, "rewardMult_说明": "首领给的金币、经验是同关小怪的几倍",
+    "drops": 2, "drops_说明": "首领必掉几件装备"
+  },
+
+  "stage": {
+    "wavesPerStage": 3, "wavesPerStage_说明": "每关几波小怪（之后还有一波首领）",
+    "monstersPerWaveBase": 2, "monstersPerWaveBase_说明": "第 1 关每波几只小怪",
+    "monstersPerWaveEvery": 3, "monstersPerWaveEvery_说明": "每过几关，每波多 1 只小怪",
+    "spawnIntervalMs": 700, "spawnIntervalMs_说明": "同一波里小怪出现的间隔，毫秒",
+    "walkMs": 1500, "walkMs_说明": "清完一波后走多久才来下一波，毫秒",
+    "waveHealPct": 0.3, "waveHealPct_说明": "清完一波回复最大生命的多少"
+  },
+
+  "skills": {
+    "gcdMs": 1000, "gcdMs_说明": "公共冷却：放完一个技能后，多久才能放下一个，毫秒",
+    "defaultOrder": ["heavy", "whirl", "heal"], "defaultOrder_说明": "新存档的技能优先顺序",
+    "heavy": { "name": "重击", "mult": 2.6, "cdMs": 4000, "_说明": "打最前面一个怪，伤害 = 攻击 × mult" },
+    "whirl": { "name": "旋风斩", "mult": 1.3, "cdMs": 6000, "radius": 170, "_说明": "打英雄前方 radius 像素内所有怪" },
+    "heal": { "name": "嗜血", "pct": 0.2, "cdMs": 10000, "_说明": "回复最大生命的 pct" }
+  },
+
+  "rewards": {
+    "goldBase": 3, "goldBase_说明": "第 1 关小怪掉多少金币",
+    "goldGrowth": 1.15, "goldGrowth_说明": "每过一关，金币乘以几",
+    "expBase": 5, "expBase_说明": "第 1 关小怪给多少经验",
+    "expGrowth": 1.2, "expGrowth_说明": "每过一关，经验乘以几",
+    "dropChance": 0.15, "dropChance_说明": "小怪死时掉装备的概率"
+  },
+
+  "level": {
+    "expBase": 40, "expBase_说明": "1 级升 2 级要多少经验",
+    "expGrowth": 1.35, "expGrowth_说明": "之后每级所需经验乘以几"
+  },
+
+  "items": {
+    "rarityNames": ["普通", "精良", "史诗", "传说"],
+    "rarityWeights": [70, 24, 5.5, 0.5], "rarityWeights_说明": "小怪掉落时四档品质的权重",
+    "bossRarityWeights": [35, 42, 19, 4], "bossRarityWeights_说明": "首领掉落时四档品质的权重",
+    "rarityMult": [1, 1.35, 1.8, 2.4], "rarityMult_说明": "四档品质的数值倍率（主属性和词缀都乘）",
+    "rarityAffixCount": [0, 1, 2, 3], "rarityAffixCount_说明": "四档品质各带几条词缀",
+    "atkMainBase": 3, "atkMainBase_说明": "1 级武器的攻击",
+    "atkMainPerLevel": 1.6, "atkMainPerLevel_说明": "物品等级每高 1 级，武器多多少攻击",
+    "hpMainBase": 30, "hpMainBase_说明": "1 级衣服的生命",
+    "hpMainPerLevel": 14, "hpMainPerLevel_说明": "物品等级每高 1 级，衣服多多少生命",
+    "ringMainFactor": 0.6, "ringMainFactor_说明": "戒指的攻击是同级武器的几倍",
+    "amuletMainFactor": 0.6, "amuletMainFactor_说明": "项链的生命是同级衣服的几倍",
+    "salvageBase": [5, 15, 50, 200], "salvageBase_说明": "四档品质分解的基础金币",
+    "salvagePerLevel": 0.1, "salvagePerLevel_说明": "物品等级每高 1 级，分解金币多 10%",
+    "bagCapacity": 40, "bagCapacity_说明": "背包最多放几件"
+  },
+
+  "affixes": {
+    "_说明": "每条词缀的 [最小, 最大]，抽到后再乘品质倍率。百分比用小数，0.05 = 5%",
+    "atkPct": [0.04, 0.08],
+    "hpPct": [0.05, 0.10],
+    "critRate": [0.02, 0.04],
+    "critDmg": [0.10, 0.20],
+    "atkSpeedPct": [0.04, 0.08],
+    "cdr": [0.03, 0.06],
+    "cdrCap": 0.4, "cdrCap_说明": "冷却缩减最多叠到多少"
+  },
+
+  "enhance": {
+    "perLevel": 0.08, "perLevel_说明": "部位每强化 1 级，该部位装备主属性多 8%",
+    "costBase": 40, "costBase_说明": "从 0 级强化到 1 级花多少金币",
+    "costGrowth": 1.45, "costGrowth_说明": "之后每级花费乘以几"
+  },
+
+  "offline": {
+    "efficiency": 0.5, "efficiency_说明": "离线收益是在线时的几成",
+    "capHours": 8, "capHours_说明": "离线收益最多算几小时",
+    "minSeconds": 60, "minSeconds_说明": "离开不到这么多秒不发离线收益",
+    "defaultKillsPerMin": 6, "defaultKillsPerMin_说明": "还没有在线记录时，按每分钟打死几只怪来算"
+  },
+
+  "save": {
+    "intervalMs": 10000, "intervalMs_说明": "每隔多少毫秒自动存档"
+  },
+
+  "sim": {
+    "bigUpgradePct": 0.25, "bigUpgradePct_说明": "模拟器里，一次换装让战力涨多少才算'明显变强'"
+  }
+}
